@@ -180,25 +180,25 @@ book.addEventListener('touchstart', (e) => {
     initialScale = currentScale;
     initialTx = currentTx;
     initialTy = currentTy;
-    const centerX_element = (initialCenterX - rect.left - currentTx) / currentScale;
-    const centerY_element = (initialCenterY - rect.top - currentTy) / currentScale;
-    initialCenterX = centerX_element * currentScale + currentTx;
-    initialCenterY = centerY_element * currentScale + currentTy;
   }
 });
 book.addEventListener('touchmove', (e) => {
   e.preventDefault();
   if (isPinchZooming && e.touches.length === 2) {
-    const rect = bookContainer.getBoundingClientRect();
     const touch1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     const touch2 = { x: e.touches[1].clientX, y: e.touches[1].clientY };
     const newDistance = distance(touch1, touch2);
+    const newCenter = center(touch1, touch2);
     const newScale = initialScale * (newDistance / initialDistance);
     currentScale = Math.max(0.5, Math.min(3, newScale));
-    const centerX_element = (initialCenterX - rect.left - initialTx) / initialScale;
-    const centerY_element = (initialCenterY - rect.top - initialTy) / initialScale;
-    currentTx = initialTx + centerX_element * initialScale - centerX_element * currentScale;
-    currentTy = initialTy + centerY_element * initialScale - centerY_element * currentScale;
+
+    // Adjust translation to keep the pinch center fixed on screen
+    const dx = newCenter.x - initialCenterX;
+    const dy = newCenter.y - initialCenterY;
+    const scaleDiff = currentScale - initialScale;
+    currentTx = initialTx + dx - (initialCenterX - window.innerWidth / 2) * scaleDiff / initialScale;
+    currentTy = initialTy + dy - (initialCenterY - window.innerHeight / 2) * scaleDiff / initialScale;
+
     updateTransform();
   } else if (!isPinchZooming) {
     dragMove(e);
