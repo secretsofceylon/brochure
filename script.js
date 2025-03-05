@@ -2,6 +2,16 @@ const totalPages = 28;
 let currentSpread = 0;
 let isDragging = false;
 let startX = 0;
+let currentScale = 1;
+let currentTx = 0;
+let currentTy = 0;
+let isPinchZooming = false;
+let initialDistance;
+let initialCenterX;
+let initialCenterY;
+let initialScale;
+let initialTx;
+let initialTy;
 
 const leftPage = document.getElementById('left-page');
 const rightPage = document.getElementById('right-page');
@@ -13,8 +23,20 @@ const pageTurnSound = new Audio('page-turn.mp3');
 pageTurnSound.preload = 'auto';
 pageTurnSound.volume = 0.5;
 
+function distance(p1, p2) {
+  return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+}
+
+function center(p1, p2) {
+  return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+}
+
+function updateTransform() {
+  bookContainer.style.transform = `scale(${currentScale}) translate(${currentTx}px, ${currentTy}px)`;
+}
+
 function loadSpread() {
-  console.log('Current spread:', currentSpread); // Debug
+  console.log('Current spread:', currentSpread);
   const isCover = currentSpread === 0;
   const isBack = currentSpread === Math.ceil((totalPages - 1) / 2);
   const leftIndex = isCover ? 1 : currentSpread * 2;
@@ -68,25 +90,25 @@ function loadSpread() {
 }
 
 function flipNext(e) {
-  e.stopPropagation(); // Prevent double trigger
+  e.stopPropagation();
   const maxSpread = Math.ceil((totalPages - 1) / 2);
   if (currentSpread < maxSpread) {
     currentSpread++;
     pageTurnSound.currentTime = 0;
     try { pageTurnSound.play(); } catch (e) { console.log('Sound failed:', e); }
     loadSpread();
-    console.log('Flipped to next:', currentSpread); // Debug
+    console.log('Flipped to next:', currentSpread);
   }
 }
 
 function flipPrev(e) {
-  e.stopPropagation(); // Prevent double trigger
+  e.stopPropagation();
   if (currentSpread > 0) {
     currentSpread--;
     pageTurnSound.currentTime = 0;
     try { pageTurnSound.play(); } catch (e) { console.log('Sound failed:', e); }
     loadSpread();
-    console.log('Flipped to prev:', currentSpread); // Debug
+    console.log('Flipped to prev:', currentSpread);
   }
 }
 
@@ -125,8 +147,12 @@ function handleClick(e) {
 }
 
 function handleDoubleTap(e) {
-  bookContainer.style.transform = bookContainer.style.transform === 'scale(1.5)' ? 'scale(1)' : 'scale(1.5)';
-  bookContainer.style.transition = 'transform 0.3s ease';
+  if (!isPinchZooming) {
+    currentScale = (currentScale === 1) ? 1.5 : 1;
+    currentTx = 0;
+    currentTy = 0;
+    updateTransform();
+  }
 }
 
 nextButton.addEventListener('click', flipNext);
@@ -139,11 +165,54 @@ book.addEventListener('mousedown', startDrag);
 book.addEventListener('mousemove', dragMove);
 book.addEventListener('mouseup', endDrag);
 book.addEventListener('touchstart', (e) => {
-  startDrag(e);
-  handleClick(e);
+  const rect = bookContainer.getBoundingClientRect();
+  if (e.touches.length === 1 && !isPinchZooming) {
+    startDrag(e);
+    handleClick(e);
+  } else if (e.touches.length === 2) {
+    isPinchZooming = true;
+    const touch1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    const touch2 = { x: e.touches[1].clientX, y: e.touches[1].clientY };
+    initialDistance = distance(touch1, touch2);
+    const initialCenter = center(touch1, touch2);
+    initialCenterX = initialCenter.x;
+    initialCenterY = initialCenter.y;
+    initialScale = currentScale;
+    initialTx = currentTx;
+    initialTy = currentTy;
+    const centerX_element = (initialCenterX - rect.left - currentTx) / currentScale;
+    const centerY_element = (initialCenterY - rect.top - currentTy) / currentScale;
+    initialCenterX = centerX_element * currentScale + currentTx;
+    initialCenterY = centerY_element * currentScale + currentTy;
+  }
 });
-book.addEventListener('touchmove', dragMove);
-book.addEventListener('touchend', endDrag);
+book.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (isPinchZooming && e.touches.length === 2) {
+    const rect = bookContainer.getBoundingClientRect();
+    const touch1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    const touch2 = { x: e.touches[1].clientX, y: e.touches[1].clientY };
+    const newDistance = distance(touch1, touch2);
+    const newScale = initialScale * (newDistance / initialDistance);
+    currentScale = Math.max(0.5, Math.min(3, newScale));
+    const centerX_element = (initialCenterX - rect.left - initialTx) / initialScale;
+    const centerY_element = (initialCenterY - rect.top - initialTy) / initialScale;
+    currentTx = initialTx + centerX_element * initialScale - centerX_element * currentScale;
+    currentTy = initialTy + centerY_element * initialScale - centerY_element * currentScale;
+    updateTransform();
+  } else if (!isPinchZooming) {
+    dragMove(e);
+  }
+});
+book.addEventListener('touchend', (e) => {
+  if (isPinchZooming) {
+    isPinchZooming = false;
+    initialDistance = null;
+    initialCenterX = null;
+    initialCenterY = null;
+  }
+  endDrag();
+});
 book.addEventListener('dblclick', handleDoubleTap);
 book.addEventListener('touchstart', (e) => {
   if (e.touches.length === 1) {
@@ -153,6 +222,5 @@ book.addEventListener('touchstart', (e) => {
     book.dataset.lastTap = now;
   }
 });
-// Removed document.addEventListener('click', handleClick) to avoid overlap
 
 loadSpread();
